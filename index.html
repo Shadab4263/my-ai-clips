@@ -45,7 +45,12 @@ go.addEventListener('click',async()=>{
   status.textContent='वीडियो इंजन लोड हो रहा है… पहली बार थोड़ा समय लग सकता है।';
   ffmpeg.on('log',({message})=>{if(message)status.textContent=message.slice(-350)});
   const base='https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
-  await ffmpeg.load({coreURL:await toBlobURL(base+'/ffmpeg-core.js','text/javascript'),wasmURL:await toBlobURL(base+'/ffmpeg-core.wasm','application/wasm')});
+  const workerURL='https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/worker.js';
+  await ffmpeg.load({
+   classWorkerURL: await toBlobURL(workerURL,'text/javascript'),
+   coreURL: await toBlobURL(base+'/ffmpeg-core.js','text/javascript'),
+   wasmURL: await toBlobURL(base+'/ffmpeg-core.wasm','application/wasm')
+  });
   const inputName='source_video';
   await ffmpeg.writeFile(inputName,new Uint8Array(await selected.arrayBuffer()));
   const probe=await new Promise((resolve,reject)=>{
