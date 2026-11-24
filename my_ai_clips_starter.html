@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="hi">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>My AI Clips</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#10131d;color:#f7f8fc;font:16px system-ui,sans-serif}
+main{max-width:760px;margin:auto;padding:24px 16px 50px}.brand{font-size:28px;font-weight:800;letter-spacing:-1px}
+.sub{color:#aab2c5;margin:6px 0 24px}.panel{background:#1b2130;border:1px solid #30394e;border-radius:18px;padding:18px;margin:14px 0}
+h2{font-size:18px;margin:0 0 12px}input[type=file],input[type=text]{width:100%;padding:13px;background:#111725;color:#fff;border:1px solid #46516a;border-radius:10px}
+button{border:0;border-radius:10px;background:#7965ff;color:white;font-weight:700;padding:13px 17px;font-size:15px;width:100%;margin-top:12px}
+button:disabled{opacity:.45}small,.note{color:#aab2c5;line-height:1.5}.status{white-space:pre-wrap;margin-top:12px;color:#d5d9e5}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.clip{background:#111725;border-radius:12px;padding:12px;min-width:0}.clip a{color:#a99dff;display:block;margin-top:8px}
+.pill{display:inline-block;background:#29254a;color:#c9c1ff;padding:5px 9px;border-radius:99px;font-size:12px}
+</style>
+</head>
+<body><main>
+<div class="brand">✂️ My AI Clips</div><div class="sub">Long video → 15 short clips</div>
+<div class="panel">
+<h2>1. अपनी वीडियो फ़ाइल चुनें</h2>
+<input id="file" type="file" accept="video/*">
+<p class="note">मोबाइल या कंप्यूटर में मौजूद अपनी वीडियो चुनें। YouTube लिंक से सीधे डाउनलोड करना इस टूल में उपलब्ध नहीं है।</p>
+</div>
+<div class="panel">
+<h2>2. Clips बनाएँ</h2>
+<span class="pill">15 बराबर हिस्से · 9:16 नहीं, मूल वीडियो आकार</span>
+<p class="note">यह शुरुआती मुफ़्त संस्करण वीडियो को 15 बराबर समय वाले हिस्सों में काटता है। यह AI द्वारा वायरल सीन चुनना नहीं है।</p>
+<button id="go" disabled>15 Clips बनाएं</button>
+<div id="status" class="status"></div>
+</div>
+<div class="panel"><h2>3. डाउनलोड करें</h2><div id="clips" class="grid"></div></div>
+<p class="note">वीडियो प्रोसेसिंग आपके ब्राउज़र में FFmpeg.wasm से होती है। पहली बार इंटरनेट से processing engine लोड होगा। बड़ी वीडियो पर मोबाइल की मेमोरी/स्पीड सीमित हो सकती है। केवल अपनी या उपयोग की अनुमति वाली वीडियो इस्तेमाल करें।</p>
+</main>
+<script type="module">
+import { FFmpeg } from 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js';
+import { toBlobURL } from 'https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js';
+const file=document.querySelector('#file'), go=document.querySelector('#go'), status=document.querySelector('#status'), clips=document.querySelector('#clips');
+let selected=null;
+file.addEventListener('change',()=>{selected=file.files[0]||null;go.disabled=!selected;clips.innerHTML='';status.textContent=selected?`चुनी गई फ़ाइल: ${selected.name}`:''});
+go.addEventListener('click',async()=>{
+ if(!selected)return;
+ go.disabled=true;clips.innerHTML='';
+ const ffmpeg=new FFmpeg();
+ try{
+  status.textContent='वीडियो इंजन लोड हो रहा है… पहली बार थोड़ा समय लग सकता है।';
+  ffmpeg.on('log',({message})=>{if(message)status.textContent=message.slice(-350)});
+  const base='https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+  await ffmpeg.load({coreURL:await toBlobURL(base+'/ffmpeg-core.js','text/javascript'),wasmURL:await toBlobURL(base+'/ffmpeg-core.wasm','application/wasm')});
+  const inputName='source_video';
+  await ffmpeg.writeFile(inputName,new Uint8Array(await selected.arrayBuffer()));
+  const probe=await new Promise((resolve,reject)=>{
+   const v=document.createElement('video');v.preload='metadata';v.onloadedmetadata=()=>resolve(v.duration);v.onerror=()=>reject(new Error('वीडियो पढ़ी नहीं जा सकी।'));v.src=URL.createObjectURL(selected);
+  });
+  if(!Number.isFinite(probe)||probe<=0)throw new Error('वीडियो की अवधि नहीं मिल सकी।');
+  const part=probe/15;
+  for(let i=0;i<15;i++){
+   status.textContent=`Clip ${i+1}/15 बन रहा है… कृपया पेज खुला रखें।`;
+   const out=`clip_${String(i+1).padStart(2,'0')}.mp4`;
+   const start=(i*part).toFixed(3), duration=(i===14?probe-i*part:part).toFixed(3);
+   await ffmpeg.exec(['-ss',start,'-i',inputName,'-t',duration,'-c:v','libx264','-preset','ultrafast','-c:a','aac','-movflags','+faststart',out]);
+   const data=await ffmpeg.readFile(out);
+   const blob=new Blob([data.buffer],{type:'video/mp4'}), url=URL.createObjectURL(blob);
+   const card=document.createElement('div');card.className='clip';
+   const label=document.createElement('strong');label.textContent=`Clip ${i+1}`;
+   const link=document.createElement('a');link.href=url;link.download=out;link.textContent='डाउनलोड करें';
+   card.append(label,link);clips.append(card);
+  }
+  status.textContent='तैयार! नीचे 15 क्लिप डाउनलोड करें।';
+ }catch(e){status.textContent='प्रोसेसिंग नहीं हो पाई: '+(e?.message||e)+'. छोटी MP4 वीडियो से दोबारा कोशिश करें।'}
+ finally{go.disabled=false}
+});
+</script></body></html>
